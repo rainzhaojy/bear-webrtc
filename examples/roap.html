@@ -1,0 +1,359 @@
+<!--
+A webrtc demo, it uses bear.roap.js for signaling, uses bear.logger.js for logging.
+Two RTCPeerConnections in one page.
+The simulator need run in broadcast mode.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Signaling with bear.roap.js</title>
+    <style>
+        div.video {
+            border-style: solid;
+            border-width: 1px;
+        }
+    </style>
+    <script src='../bear.webrtcadapter.js'></script>
+    <script src='../bear.roap.js'></script>
+    <script src="../bear.logger.js"></script>
+</head>
+
+<body>
+<h2>Test WebRTC</h2>
+
+<div class="video">
+    <video id="localVideo" width="320" height="240" controls autoplay muted></video>
+    <video id="remoteVideo" width="320" height="240" controls autoplay muted></video>
+    <button id="startButton" onclick="start(0)">Start</button>
+    <button id="callButton" onclick="call(0)">Call</button>
+    <button id="acceptButton" onclick="accept(0)">Accept</button>
+    <button id="hangupButton" onclick="hangup(0)">Hang Up</button>
+</div>
+
+<div class="video">
+    <video id="localVideo2" width="320" height="240" controls autoplay muted></video>
+    <video id="remoteVideo2" width="320" height="240" controls autoplay muted></video>
+    <button id="startButton2" onclick="start(1)">Start</button>
+    <button id="callButton2" onclick="call(1)">Call</button>
+    <button id="acceptButton2" onclick="accept(1)">Accept</button>
+    <button id="hangupButton2" onclick="hangup(1)">Hang Up</button>
+</div>
+
+<script>
+    var roap = bear.Roap;
+    var logger = new bear.Logger();
+    roap.init(sendMessage, onRoapUpdate, logger);
+    roap.setSessionToken('dummytoken' + roap.getRandomInt(100,1000));
+
+    var offerIdMap = {}; // {peerId:offerId}
+    var outstandingPeerId = 0;
+
+    var localStream = [], pc = [];
+
+    var localVideo = [], remoteVideo = [];
+    localVideo[0] = document.getElementById("localVideo");
+    localVideo[1] = document.getElementById("localVideo2");
+    remoteVideo[0] = document.getElementById("remoteVideo");
+    remoteVideo[1] = document.getElementById("remoteVideo2");
+
+    var startButton = [], callButton = [], acceptButton = [], hangupButton = [];
+    startButton[0] = document.getElementById("startButton");
+    callButton[0] = document.getElementById("callButton");
+    acceptButton[0] = document.getElementById("acceptButton");
+    hangupButton[0] = document.getElementById("hangupButton");
+    startButton[1] = document.getElementById("startButton2");
+    callButton[1] = document.getElementById("callButton2");
+    acceptButton[1] = document.getElementById("acceptButton2");
+    hangupButton[1] = document.getElementById("hangupButton2");
+
+    for (var i = 0; i < 2; i++) {
+        startButton[i].disabled = false;
+        callButton[i].disabled = true;
+        acceptButton[i].disabled = true;
+        hangupButton[i].disabled = true;
+    }
+
+    //var pc_config = {'iceServers': [{'url': 'stun:stun.l.google.com:19302'}]};
+    //var pc_constraints = {'optional': [{'DtlsSrtpKeyAgreement': true}]};
+    // Set up audio and video regardless of what devices are present.
+    var sdpConstraints = {
+        'mandatory': {
+            'OfferToReceiveAudio': true,
+            'OfferToReceiveVideo': true
+        }
+    };
+
+    function start(peerId) {
+        logger.log("Requesting local stream, peerId:", peerId);
+        outstandingPeerId = peerId;
+        startButton[peerId].disabled = true;
+        var gotStreamCb = gotStream.bind(window, peerId);
+        getUserMedia({audio: true, video: true}, gotStreamCb, handleError);
+    }
+
+    function gotStream(peerId, stream) {
+        logger.log("Received local stream, peerId:", peerId);
+        localVideo[peerId].src = URL.createObjectURL(stream);
+        localStream[peerId] = stream;
+        callButton[peerId].disabled = false;
+        createPeerConnection(peerId);
+    }
+
+    function call(peerId) {
+        callButton[peerId].disabled = true;
+        logger.log("Starting call, peerId:", peerId);
+
+        //invite peer side
+        var msg = {messageType: "INVITE"};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function accept(peerId) {
+        logger.log("Accepting call, peerId:", peerId);
+        acceptButton[peerId].disabled = true;
+
+        var msg = {messageType: "ACCEPT"};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function createPeerConnection(peerId) {
+        logger.log("Creating peer connection, peerId:", peerId);
+        if (localStream[peerId].getVideoTracks().length > 0) {
+            logger.log('Using video device: ' + localStream[peerId].getVideoTracks()[0].label);
+        }
+        if (localStream[peerId].getAudioTracks().length > 0) {
+            logger.log('Using audio device: ' + localStream[peerId].getAudioTracks()[0].label);
+        }
+
+        var servers = null;
+
+        pc[peerId] = new RTCPeerConnection(servers);
+
+        var gotLocalIC = gotLocalIceCandidate.bind(window, peerId);
+        var gotRemoteS = gotRemoteStream.bind(window, peerId);
+
+        pc[peerId].onicecandidate = gotLocalIC;
+        pc[peerId].onaddstream = gotRemoteS;
+        pc[peerId].addStream(localStream[peerId]);
+    }
+
+    function gotRemoteStream(peerId, event) {
+        logger.log("Received remote stream, peerId:", peerId);
+        remoteVideo[peerId].src = URL.createObjectURL(event.stream);
+    }
+
+    function gotLocalIceCandidate(peerId, event) {
+        if (event.candidate) {
+            logger.log("candidate:", event.candidate.candidate);
+            event.candidate.type = 'icecandidate';
+            invokeRoap(peerId, event.candidate);
+        }
+    }
+
+    //got local offer/answer/icecandidate, call roap to send to peer side
+    function invokeRoap(peerId, msg) {
+        var offerId = offerIdMap[peerId];
+        offerId = roap.onLocalMessage(offerId, msg);
+        if (offerId){
+            offerIdMap[peerId] = offerId;
+        }
+        else {
+            //not handled?
+            error('offerId is null');
+        }
+    }
+
+    function doOffer(peerId) {
+        logger.log("Creating offer, peerId:", peerId);
+        hangupButton[peerId].disabled = false;
+        var gotOff = gotOffer.bind(window, peerId);
+        pc[peerId].createOffer(gotOff, handleError);
+    }
+
+    function gotOffer(peerId, description) {
+        logger.log("Got the offer, peerId:", peerId);
+        pc[peerId].setLocalDescription(description);
+        invokeRoap(peerId, description);
+    }
+
+    function doAnswer(peerId) {
+        logger.log("Creating answer, peerId:", peerId);
+        hangupButton[peerId].disabled = false;
+        var gotAnw = gotAnswer.bind(window, peerId);
+        pc[peerId].createAnswer(gotAnw, handleError, sdpConstraints);
+    }
+
+    function gotAnswer(peerId, description) {
+        logger.log("Got the answer, peerId:", peerId);
+        pc[peerId].setLocalDescription(description);
+        invokeRoap(peerId, description);
+    }
+
+    function onData(msgstring) {
+        var msg, desc;
+        try {
+            msg = JSON.parse(msgstring);
+        } catch (e) {
+            logger.error("not a valid json string", e.toString());
+            return;
+        }
+        var msgType = msg.messageType;
+        if (!msgType) {
+            logger.error("messageType is not found");
+            return;
+        }
+        msgType = msgType.toUpperCase();
+
+        if (msgType === "INVITE") {
+            callButton[outstandingPeerId].disabled = true;
+            acceptButton[outstandingPeerId].disabled = false;
+        }
+        else if (msgType === "ACCEPT") {
+            doOffer(outstandingPeerId);
+        }
+        else {
+            ///////////// use roap.js
+            roap.onRemoteMessage(msgstring);
+        }
+    }
+
+    function onRoapUpdate(msg){
+        var offerId = this.offererSessionId;
+        var peerId = findPeerId(offerId);
+        logger.log('msg.type:', msg.type, 'offerId:', offerId, 'peerId:', peerId);
+
+        if (peerId < 0 && msg.type !== 'offer'){
+            logger.error('not found the peerId');
+            return;
+        }
+        switch (msg.type) {
+            case 'offer':
+                gotOfferCb(offerId, msg.sdp);
+                break;
+            case 'answer':
+                var desc = new RTCSessionDescription();
+                desc.type = 'answer';
+                desc.sdp = msg.sdp;
+                pc[peerId].setRemoteDescription(desc, function () {
+                    logger.log("set remote sdp success");
+                }, handleError);
+                break;
+            case 'icecandidate':
+                var icecandidate = new RTCIceCandidate({
+                    candidate: msg.candidate,
+                    sdpMid: msg.sdpMid,
+                    sdpMLineIndex: msg.sdpMLineIndex
+                });
+                pc[peerId].addIceCandidate(icecandidate, function(){
+                    logger.log("pc.addIceCandidate success");
+                }, handleError);
+                break;
+            case 'shutdown':
+                logger.log('peer side shutdown the call.');
+                pc[peerId].close();
+                pc[peerId] = null;
+                delete offerIdMap[peerId];
+                hangupButton[peerId].disabled = true;
+                startButton[peerId].disabled = false;
+                break;
+            case 'done':
+                break;
+            default:
+                logger.error('unknown type');
+        }
+    }
+    function findPeerId(offerId) {
+        for (var peerId in offerIdMap) {
+            if (offerId === offerIdMap[peerId]) {
+                //found the peerId
+                return peerId;
+            }
+        }
+        return -1; //not found
+    }
+    function gotOfferCb(offerId, sdp){
+        var desc = new RTCSessionDescription();
+        desc.type = 'offer';
+        desc.sdp = sdp;
+
+        var peerId = findPeerId(offerId);
+        if (peerId >= 0) {
+            //found the peerId, just use this peerConnection to answer the offer
+            var doA = doAnswer.bind(window, peerId);
+            pc[peerId].setRemoteDescription(desc, doA, handleError);
+            return;
+        }
+        logger.log("not found the peerId, offerId=", offerId, ', try to use outstanding peerId:', outstandingPeerId);
+        if (outstandingPeerId > -1) {
+            var doA = doAnswer.bind(window, outstandingPeerId);
+            pc[outstandingPeerId].setRemoteDescription(desc, doA, handleError);
+            offerIdMap[outstandingPeerId] = offerId;
+            return;
+        }
+        logger.error('No available peer connection');
+    }
+
+    function hangup(peerId) {
+        logger.log("Ending call, peerId:", peerId);
+        pc[peerId].close();
+        pc[peerId] = null;
+
+        var msg = {type:'shutdown'};
+        invokeRoap(peerId, msg);
+
+        delete offerIdMap[peerId];
+
+        hangupButton[peerId].disabled = true;
+        startButton[peerId].disabled = false;
+    }
+
+    function handleError(error) {
+        logger.error(error.toString());
+    }
+
+    /************** websocket ***********************/
+    var hostname = window.location.hostname;
+    var protocol = window.location.protocol;
+    var ws;
+    if (protocol.toLowerCase().indexOf("https") >= 0){
+        ws = new WebSocket('wss://' + hostname + ':8443');
+    }
+    else {
+        ws = new WebSocket('ws://' + hostname + ':8888');
+    }
+    ws.binaryType = "arraybuffer";
+    ws.onopen = onOpen;
+    ws.onclose = onClose;
+    ws.onmessage = onMessage;
+    ws.onerror = onError;
+
+    function onMessage(evt) {
+        logger.log("onMessage: " + evt.data);
+        onData(evt.data);
+    }
+
+    function onOpen() {
+        logger.log("onOpen");
+    }
+
+    function onClose() {
+        logger.log("onClose");
+    }
+
+    function onError() {
+        logger.log("onError");
+    }
+
+    function sendMessage(msg) {
+        logger.log("send: " + msg);
+        ws.send(msg);
+    }
+    /****************** end of websocket ***********************/
+
+</script>
+
+</body>
+
+</html>

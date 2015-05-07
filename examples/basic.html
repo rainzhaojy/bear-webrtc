@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>A very basic webrtc demo</title>
+    <style>
+        div.video {
+            border-style: solid;
+            border-width: 1px;
+        }
+    </style>
+    <script src='../bear.webrtcadapter.js'></script>
+    <script src="../bear.logger.js"></script>
+</head>
+
+<body>
+
+<div class="video">
+    <video id="localVideo" width="320" height="240" autoplay muted></video>
+    <video id="remoteVideo" width="320" height="240" autoplay muted></video>
+</div>
+
+<div>
+    <button id="startButton" onclick="start()">Start</button>
+    <button id="callButton" onclick="call()">Call</button>
+</div>
+
+<script>
+    var logger = new bear.Logger();
+    var localStream, pc;
+
+    var localVideo = document.getElementById("localVideo");
+    var remoteVideo = document.getElementById("remoteVideo");
+
+    var startButton = document.getElementById("startButton");
+    var callButton = document.getElementById("callButton");
+    startButton.disabled = false;
+    callButton.disabled = true;
+
+    function start() {
+        logger.log("start: Requesting local stream");
+        startButton.disabled = true;
+        getUserMedia({audio: true, video: true}, gotLocalStream, handleError);
+        logger.log("start: done");
+    }
+
+    function gotLocalStream(stream) {
+        logger.log("gotLocalStream: Received local stream");
+        localVideo.src = URL.createObjectURL(stream);
+        localStream = stream;
+        callButton.disabled = false;
+        createPeerConnection();
+        logger.log("gotLocalStream: done");
+    }
+
+    function call() {
+        logger.log("call: Starting call");
+        doOffer();
+    }
+
+    function createPeerConnection() {
+        logger.log("createPeerConnection: Creating peer connection")
+        if (localStream.getVideoTracks().length > 0) {
+            logger.log('createPeerConnection: Using video device: ' + localStream.getVideoTracks()[0].label);
+        }
+        if (localStream.getAudioTracks().length > 0) {
+            logger.log('createPeerConnection: Using audio device: ' + localStream.getAudioTracks()[0].label);
+        }
+
+        var servers = null; //no STUN/TURN servers
+        pc = new RTCPeerConnection(servers);
+        //peer connection events
+        pc.onicecandidate = gotLocalIceCandidate;
+        pc.onaddstream = gotRemoteStream;
+        pc.ondatachannel = function(ev){
+            logger.log('---------- ondatachannel');
+        };
+        pc.oniceconnectionstatechange = function(ev){
+            logger.log('---------- oniceconnectionstatechange:', ev.target.iceConnectionState);
+        };
+        pc.onidentityresult = function(ev){
+            logger.log('---------- onidentityresult');
+        };
+        pc.onidpassertionerror = function(ev){
+            logger.log('---------- onidpassertionerror');
+        };
+        pc.onidpvalidationerror = function(ev){
+            logger.log('---------- onidpvalidationerror');
+        };
+        pc.onnegotiationneeded = function(ev){
+            logger.log('---------- onnegotiationneeded', ev.target);
+        };
+        pc.onpeeridentity = function(ev){
+            logger.log('---------- onpeeridentity');
+        };
+        pc.onremovestream = function(ev){
+            logger.log('---------- onremovestream');
+        };
+        pc.onsignalingstatechange = function(ev){
+            logger.log('---------- onsignalingstatechange:', ev.target.signalingState);
+        };
+        logger.log("createPeerConnection: Created peer connection");
+        pc.addStream(localStream);
+        logger.log("createPeerConnection: done");
+    }
+
+    function doOffer() {
+        logger.log("doOffer: creating offer");
+        callButton.disabled = true;
+        var offerConstraints = {
+            mandatory: {
+                OfferToReceiveAudio: 3,
+                OfferToReceiveVideo: 4
+            }
+        };
+        pc.createOffer(gotOffer, handleError, offerConstraints);
+        logger.log("doOffer: done");
+    }
+
+    function gotOffer(description) {
+        logger.log("gotOffer: got the offer");
+        pc.setLocalDescription(description);
+        var msg = {messageType: description.type, sdp: description.sdp};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function doAnswer() {
+        logger.log("doAnswer: creating answer");
+        callButton.disabled = true;
+        var answerConstraints = {
+            mandatory: {
+                OfferToReceiveAudio: true,
+                OfferToReceiveVideo: true
+            }
+        };
+        pc.createAnswer(gotAnswer, handleError, answerConstraints);
+        logger.log("doAnswer: created answer");
+    }
+
+    function gotAnswer(description) {
+        logger.log("gotAnswer: got the answer");
+        pc.setLocalDescription(description);
+        var msg = {messageType: description.type, sdp: description.sdp};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function gotRemoteStream(event) {
+        logger.log("gotRemoteStream: Received remote stream");
+        remoteVideo.src = URL.createObjectURL(event.stream);
+    }
+
+    function gotLocalIceCandidate(event) {
+        if (event.candidate) {
+            logger.log("gotLocalIceCandidate: ", event.candidate.candidate);
+            var msg = {
+                messageType: "ICECANDIDATE",
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+            };
+
+            var msgStr = JSON.stringify(msg);
+            sendMessage(msgStr);
+        }
+    }
+
+    function onData(msgstring) {
+        var msg, desc;
+        try {
+            msg = JSON.parse(msgstring);
+        } catch (e) {
+            logger.warn("not a valid json string");
+            return;
+        }
+        var msgType = msg.messageType;
+        if (!msgType) {
+            logger.warn("messageType is not found");
+            return;
+        }
+        msgType = msgType.toUpperCase();
+        if (msgType === "OFFER") {
+            desc = new RTCSessionDescription();
+            desc.type = msg.messageType;
+            desc.sdp = msg.sdp;
+            pc.setRemoteDescription(desc, doAnswer, handleError);
+        }
+        else if (msgType === "ANSWER") {
+            desc = new RTCSessionDescription();
+            desc.type = msg.messageType;
+            desc.sdp = msg.sdp;
+            pc.setRemoteDescription(desc, function () {
+                logger.log("set remote sdp success");
+                var msg = {messageType: "OK"};
+                var msgStr = JSON.stringify(msg);
+                sendMessage(msgStr);
+            }, handleError);
+        }
+        else if (msgType === "OK") {
+            logger.log('got OK');
+        }
+        else if (msgType === "ICECANDIDATE") {
+            var candidate = new RTCIceCandidate({
+                candidate: msg.candidate,
+                sdpMid: msg.sdpMid,
+                sdpMLineIndex: msg.sdpMLineIndex
+            });
+            pc.addIceCandidate(candidate);
+        }
+    }
+
+    function handleError(error) {
+        logger.error('ERROR', error);
+    }
+
+    /************** websocket ***********************/
+    var hostname = window.location.hostname;
+    var protocol = window.location.protocol;
+    if (protocol.toLowerCase().indexOf("https") >= 0){
+        ws = new WebSocket('wss://' + hostname + ':8443');
+    }
+    else {
+        ws = new WebSocket('ws://' + hostname + ':8080');
+    }
+    ws.binaryType = "arraybuffer";
+    ws.onopen = onOpen;
+    ws.onclose = onClose;
+    ws.onmessage = onMessage;
+    ws.onerror = onError;
+
+    function onMessage(evt) {
+        logger.info("onMessage: " + evt.data);
+        onData(evt.data);
+    }
+
+    function onOpen() {
+        logger.info("onOpen");
+    }
+
+    function onClose() {
+        logger.info("onClose");
+    }
+
+    function onError() {
+        logger.info("onError");
+    }
+
+    function sendMessage(msg) {
+        logger.info("send: " + msg);
+        ws.send(msg);
+    }
+    /****************** end of websocket ***********************/
+
+</script>
+
+</body>
+
+</html>

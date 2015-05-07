@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+    <style>
+        div.select {
+            display: inline-block;
+            margin: 0 0 1em 0;
+        }
+        select {
+            width: 110px;
+        }
+    </style>
+    <script src='../../bear.webrtcadapter.js'></script>
+    <script src="../../bear.logger.js"></script>
+</head>
+<body>
+<div class="select">
+    <label for="audioSource">Audio source: </label><select id="audioSource"></select>
+    <label for="videoSource">Video source: </label><select id="videoSource"></select>
+    <button id="startButton" onclick="start()">Start</button>
+</div>
+
+<div>
+    <video id="localVideo" autoplay muted></video>
+</div>
+
+<script>
+    var logger = new bear.Logger();
+
+    //UI elements
+    var localVideo = document.getElementById("localVideo");
+    var audioSelect = document.querySelector('select#audioSource');
+    var videoSelect = document.querySelector('select#videoSource');
+
+    // store the source ids into array audioSource and videoSource
+    var audioSource = [], videoSource = [];
+    var localStream;
+
+    // call getSources() if MediaStreamTrack is supported
+    if (typeof MediaStreamTrack === 'undefined') {
+        alert('This browser does not support MediaStreamTrack.');
+    }
+    else {
+        MediaStreamTrack.getSources(gotSources);
+    }
+
+    function gotSources(sourceInfos) {
+        for (var i = 0; i !== sourceInfos.length; ++i) {
+            var sourceInfo = sourceInfos[i];
+            var label;
+
+            //add to UI
+            var option = document.createElement('option');
+            option.value = sourceInfo.id;
+
+            if (sourceInfo.kind === 'audio') {
+                audioSource.push(sourceInfo.id);
+                label = sourceInfo.label || 'microphone ' + audioSource.length;
+                logger.log(label);
+
+                //add to UI
+                option.text = label;
+                audioSelect.appendChild(option);
+            }
+            else if (sourceInfo.kind === 'video') {
+                videoSource.push(sourceInfo.id);
+                label = sourceInfo.label || 'camera ' + videoSource.length;
+                logger.log(label);
+
+                //add to UI
+                option.text = label;
+                videoSelect.appendChild(option);
+            }
+            else {
+                logger.warn('Some other kind of source: ', sourceInfo);
+            }
+        }
+    }
+
+    function start() {
+        //reset video
+        if (localStream) {
+            localVideo.src = '';
+            localStream.stop();
+            localStream = null;
+        }
+
+        //define the constraints
+        var constraints = {
+            audio: {
+                optional: [{
+                    sourceId: audioSelect.value
+                }]
+            },
+            video: {
+                optional: [{
+                    sourceId: videoSelect.value
+                }]
+            }
+        };
+
+        //call getUserMedia
+        getUserMedia(constraints, gotLocalStream, handleError);
+    }
+
+    function gotLocalStream(stream) {
+        logger.log("gotLocalStream: Received local stream");
+        localVideo.src = URL.createObjectURL(stream);
+        localStream = stream;
+    }
+
+    function handleError(error) {
+        logger.error('ERROR', error);
+    }
+</script>
+
+</body>
+</html>

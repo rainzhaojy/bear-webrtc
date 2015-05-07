@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>getUserMedia to canvas</title>
+  <script src='../../bear.webrtcadapter.js'></script>
+  <script src="../../bear.logger.js"></script>
+</head>
+
+<body>
+
+    <video autoplay></video>
+    <button>Take snapshot</button>
+    <canvas></canvas>
+
+<script>
+  var logger = new bear.Logger();
+
+  getUserMedia({audio: false, video: true}, function (stream) {
+      video.src = window.URL.createObjectURL(stream);
+  }, function (error) {
+      logger.log('getUserMedia error: ', error);
+  });
+
+  var canvas = window.canvas = document.querySelector('canvas');
+  var button = document.querySelector('button');
+  var video = document.querySelector('video');
+
+  canvas.width = 480;
+  canvas.height = 360;
+
+  button.onclick = function() {
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  };
+</script>
+
+</body>
+</html>

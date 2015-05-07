@@ -1,0 +1,11 @@
+{
+    "isDev": true,
+    "logLevel": 5,
+    "server": {
+        "port": 8080,
+        "secure": false, /* whether this connects via https */
+        "key": "cert/server.key",
+        "cert": "cert/server.crt",
+        "password": null
+    }
+}

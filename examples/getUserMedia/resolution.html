@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html">
+<head>
+    <title>constraints in getUserMedia</title>
+    <script src='../../bear.webrtcadapter.js'></script>
+    <script src="../../bear.logger.js"></script>
+</head>
+
+<body>
+
+<div>
+Resolution:
+<button onclick="setResolution(1920, 1080)">1920x1080 (1080p)</button>
+<button onclick="setResolution(1280, 720)">1280x720 (720p)</button>
+<button onclick="setResolution(640, 360)">640x360 (360p)</button>
+</div>
+<div>
+    minWidth:<input type="number" id="minWidth" value="640">
+    minHeight:<input type="number" id="minHeight" value="360">
+    maxWidth:<input type="number" id="maxWidth">
+    maxHeight:<input type="number" id="maxHeight">
+    minFrameRate:<input type="number" id="minFrameRate">
+    <button id="startButton" onclick="start()">Start</button>
+</div>
+
+<div>
+    <video id="localVideo" autoplay muted></video>
+</div>
+<div id="localVideoDiv"></div>
+
+<script>
+    var logger = new bear.Logger();
+
+    var localStream, pc;
+
+    var localVideo = document.getElementById("localVideo");
+    var startButton = document.getElementById("startButton");
+    var minWidthInput = document.getElementById("minWidth");
+    var minHeightInput = document.getElementById("minHeight");
+    var maxWidthInput = document.getElementById("maxWidth");
+    var maxHeightInput = document.getElementById("maxHeight");
+    var minFrameRateInput = document.getElementById("minFrameRate");
+    var localVideoStatsDiv = document.getElementById('localVideoDiv');
+
+    function setResolution(width, height) {
+        minWidthInput.value = maxWidthInput.value = width;
+        minHeightInput.value = maxHeightInput.value = height;
+    }
+
+    function getUserMediaConstraints() {
+        var constraints = {};
+        constraints.audio = true;
+        constraints.video = {
+            mandatory: {},
+            optional: []
+        };
+        var mandatory = constraints.video.mandatory;
+        if (minWidthInput.value) {
+            mandatory.minWidth = minWidthInput.value;
+        }
+        if (minHeightInput.value) {
+            mandatory.minHeight = minHeightInput.value;
+        }
+        if (maxWidthInput.value) {
+            mandatory.maxWidth = maxWidthInput.value;
+        }
+        if (maxHeightInput.value) {
+            mandatory.maxHeight = maxHeightInput.value;
+        }
+        if (minFrameRateInput.value) {
+            mandatory.minFrameRate = minFrameRateInput.value;
+        }
+        return constraints;
+    }
+
+    function start() {
+        logger.log("start: Requesting local stream");
+
+        //reset it
+        localVideoStatsDiv.innerHTML = '';
+        if (localStream) {
+            localVideo.src = '';
+            localStream.stop();
+            localStream = null;
+        }
+
+        var constraints = getUserMediaConstraints();
+        var msgstring = JSON.stringify(constraints);
+        logger.log('constraints:', msgstring);
+        getUserMedia(constraints, gotLocalStream, handleError);
+    }
+
+    function gotLocalStream(stream) {
+        logger.log("gotLocalStream: Received local stream");
+        localVideo.src = URL.createObjectURL(stream);
+        localStream = stream;
+        window.setTimeout(function(){
+            localVideoStatsDiv.innerHTML = '<strong>Video dimensions:</strong> ' +
+                    localVideo.videoWidth + 'x' + localVideo.videoHeight + 'px';
+        }, 1000);
+    }
+
+    function handleError(error) {
+        logger.error('ERROR', error);
+    }
+
+</script>
+
+</body>
+
+</html>

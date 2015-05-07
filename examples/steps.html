@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simulator: broadcast demo</title>
+    <style>
+        div.video {
+            border-style: solid;
+            border-width: 1px;
+        }
+    </style>
+    <script src='../bear.webrtcadapter.js'></script>
+    <script src="../bear.logger.js"></script>
+</head>
+
+<body>
+
+Select media constraints: <select id="constraintsList"></select>
+<div class="video">
+    <video id="localVideo" autoplay></video>
+    <video id="remoteVideo" autoplay></video>
+    <textarea id="offerSdp" rows="20" cols="80"></textarea>
+</div>
+
+<div>
+    <button onclick="start()">getUserMedia</button>
+    <button onclick="doOffer()">createOffer</button>
+    <button onclick="setOffer()">setOffer</button>
+    <button onclick="createPeerConnection()">createPeerConnection</button>
+    <button onclick="addStream(true)">addLocalStream</button>
+    <button onclick="addStream(false)">addRemoteStream</button>
+    <button onclick="removeStream(true)">removeLocalStream</button>
+    <button onclick="removeStream(false)">removeRemoteStream</button>
+</div>
+
+<table border="1">
+    <tr>
+        <td>
+        A normal flow:
+        <ul>
+            <li>getUserMedia()</li>
+            <li>createPeerConnection()</li>
+            <li>addLocalStream()</li>
+            <li>createOffer()</li>
+            <li>update offer (optional)</li>
+            <li>setOffer()</li>
+        </ul>
+        </td>
+        <td>
+            Stream loopback:
+            <ul>
+                <li>Finish a normal flow</li>
+                <li>removeLocalStream() (optional)</li>
+                <li>addRemoteStream()</li>
+                <li>doOffer()</li>
+            </ul>
+        </td>
+    </tr>
+</table>
+
+<script>
+    var logger = new bear.Logger();
+
+    var localStream, pc, remoteStream;
+
+    var localVideo = document.getElementById("localVideo");
+    var remoteVideo = document.getElementById("remoteVideo");
+    var offerSdpTextarea = document.getElementById('offerSdp');
+
+    var constraints_default = {audio: true, video: true};
+    var constraints_720p = {
+        audio: true,
+        video: {
+            mandatory: {
+                maxWidth: 1280,
+                maxHeight: 720,
+                minWidth: 1280,
+                minHeight: 720
+            }
+        }
+    };
+
+    var constraints_360p = { audio: true, video: {mandatory: { minWidth: 1280, minHeight: 720 } } };/*{
+        audio: true,
+        video: {
+            mandatory: {
+                maxWidth: 640,
+                maxHeight: 360,
+                minWidth: 320,
+                minHeight: 180
+            }
+        }
+    };*/
+    var constraintsSelect = document.querySelector('select#constraintsList');
+    var option = document.createElement('option');
+    option.value = '0';
+    option.text = 'default';
+    constraintsSelect.appendChild(option);
+    option = document.createElement('option');
+    option.value = '1';
+    option.text = 'video 360p';
+    constraintsSelect.appendChild(option);
+    option = document.createElement('option');
+    option.value = '2';
+    option.text = 'video 720p';
+    constraintsSelect.appendChild(option);
+
+    //var pc_config = {'iceServers': [{'url': 'stun:stun.l.google.com:19302'}]};
+    //var pc_constraints = {'optional': [{'DtlsSrtpKeyAgreement': true}]};
+    // Set up audio and video regardless of what devices are present.
+    var sdpConstraints = {
+        'mandatory': {
+            'OfferToReceiveAudio': true,
+            'OfferToReceiveVideo': true
+        }
+    };
+
+    function addStream(isLocal) {
+        logger.log('addStream:', isLocal?'local':'remote');
+        if (isLocal) {
+            if (localStream) {
+                pc.addStream(localStream);
+            } else {
+                logger.warn('addStream: localStream is null');
+            }
+        } else {
+            if (remoteStream) {
+                pc.addStream(remoteStream);
+            } else {
+                logger.warn('addStream: remoteStream is null');
+            }
+        }
+    }
+    function removeStream(isLocal) {
+        logger.log('removeStream:', isLocal?'local':'remote');
+        if (isLocal) {
+            if (localStream) {
+                pc.removeStream(localStream);
+            } else {
+                logger.warn('removeStream: localStream is null');
+            }
+        } else {
+            if (remoteStream) {
+                pc.removeStream(remoteStream);
+            } else {
+                logger.warn('removeStream: remoteStream is null');
+            }
+        }
+    }
+
+    function start() {
+        logger.log("start: Requesting local stream");
+        var constraintsIndex = constraintsSelect.value;
+        logger.info('constraints index:', constraintsIndex);
+        var cons;
+        switch (constraintsIndex) {
+            case '0':
+                cons = constraints_default;
+                break;
+            case '1':
+                cons = constraints_360p;
+                break;
+            case '2':
+                cons = constraints_720p;
+                break;
+            default:
+        }
+        logger.info('constraints:', cons);
+        getUserMedia(cons, gotLocalStream, handleError);
+        logger.log("start: done");
+    }
+
+    function gotLocalStream(stream) {
+        logger.log("gotLocalStream: Received local stream");
+        localStream = stream;
+        localVideo.src = URL.createObjectURL(stream);
+        if (localStream.getVideoTracks().length > 0) {
+            logger.log('gotLocalStream: Using video device: ' + localStream.getVideoTracks()[0].label);
+        }
+        if (localStream.getAudioTracks().length > 0) {
+            logger.log('gotLocalStream: Using audio device: ' + localStream.getAudioTracks()[0].label);
+        }
+        //createPeerConnection();
+        logger.log("gotLocalStream: done");
+    }
+
+    function createPeerConnection() {
+        logger.log("createPeerConnection: Creating peer connection")
+
+        var servers = null;
+
+        pc = new RTCPeerConnection(servers);
+        //peer connection events
+        pc.onicecandidate = gotLocalIceCandidate;
+        pc.onaddstream = gotRemoteStream;
+        pc.ondatachannel = function(ev){
+            logger.log('---------- ondatachannel');
+        };
+        pc.oniceconnectionstatechange = function(ev){
+            logger.log('---------- oniceconnectionstatechange:', ev.target.iceConnectionState);
+        };
+        pc.onidentityresult = function(ev){
+            logger.log('---------- onidentityresult');
+        };
+        pc.onidpassertionerror = function(ev){
+            logger.log('---------- onidpassertionerror');
+        };
+        pc.onidpvalidationerror = function(ev){
+            logger.log('---------- onidpvalidationerror');
+        };
+        pc.onnegotiationneeded = function(ev){
+            logger.log('---------- onnegotiationneeded', ev.target);
+        };
+        pc.onpeeridentity = function(ev){
+            logger.log('---------- onpeeridentity');
+        };
+        pc.onremovestream = function(ev){
+            logger.log('---------- onremovestream');
+        };
+        pc.onsignalingstatechange = function(ev){
+            logger.log('---------- onsignalingstatechange:', ev.target.signalingState);
+        };
+        //logger.log("createPeerConnection: Created peer connection");
+        //localStream && pc.addStream(localStream); //add local stream if have
+        logger.log("createPeerConnection: done");
+    }
+
+    function doOffer() {
+        logger.log("doOffer: creating offer");
+        pc.createOffer(gotOffer, handleError);
+        logger.log("doOffer: done");
+    }
+
+    function gotOffer(description) {
+        logger.log("gotOffer: got the offer");
+        offerSdpTextarea.value = description.sdp;
+    }
+
+    function maybeAddLineBreakToEnd(sdp) {
+        var endWithLineBreak = new RegExp(/\n$/);
+        if (!endWithLineBreak.test(sdp)) {
+            return sdp + '\n';
+        }
+        return sdp;
+    }
+    function setOffer() {
+        var sdp = offerSdpTextarea.value;
+        sdp = maybeAddLineBreakToEnd(sdp);
+        var desc = new RTCSessionDescription();
+        desc.type = 'offer';
+        desc.sdp = sdp;
+        pc.setLocalDescription(desc);
+        var msg = {messageType: desc.type, sdp: sdp};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function doAnswer() {
+        logger.log("doAnswer: creating answer");
+        pc.createAnswer(gotAnswer, handleError, sdpConstraints);
+        logger.log("doAnswer: created answer");
+    }
+
+    function gotAnswer(description) {
+        logger.log("gotAnswer: got the answer");
+        pc.setLocalDescription(description);
+        var msg = {messageType: description.type, sdp: description.sdp};
+        var msgStr = JSON.stringify(msg);
+        sendMessage(msgStr);
+    }
+
+    function gotRemoteStream(event) {
+        logger.log("gotRemoteStream: Received remote stream");
+        remoteStream = event.stream;
+        remoteVideo.src = URL.createObjectURL(remoteStream);
+    }
+
+    function gotLocalIceCandidate(event) {
+        if (event.candidate) {
+            logger.log("gotLocalIceCandidate: ", event.candidate.candidate);
+            var msg = {
+                messageType: "ICECANDIDATE",
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+            };
+
+            var msgStr = JSON.stringify(msg);
+            sendMessage(msgStr);
+        }
+    }
+
+    function onData(msgstring) {
+        var msg, desc;
+        try {
+            msg = JSON.parse(msgstring);
+        } catch (e) {
+            logger.warn("not a valid json string");
+            return;
+        }
+        var msgType = msg.messageType;
+        if (!msgType) {
+            logger.warn("messageType is not found");
+            return;
+        }
+        msgType = msgType.toUpperCase();
+        if (msgType === "OFFER") {
+            desc = new RTCSessionDescription();
+            desc.type = msg.messageType;
+            desc.sdp = msg.sdp;
+            pc.setRemoteDescription(desc, doAnswer, handleError);
+        }
+        else if (msgType === "ANSWER") {
+            desc = new RTCSessionDescription();
+            desc.type = msg.messageType;
+            desc.sdp = msg.sdp;
+            pc.setRemoteDescription(desc, function () {
+                logger.log("set remote sdp success");
+                var msg = {messageType: "OK"};
+                var msgStr = JSON.stringify(msg);
+                sendMessage(msgStr);
+            }, handleError);
+        }
+        else if (msgType === "OK") {
+            logger.log('got OK');
+        }
+        else if (msgType === "ICECANDIDATE") {
+            var candidate = new RTCIceCandidate({
+                candidate: msg.candidate,
+                sdpMid: msg.sdpMid,
+                sdpMLineIndex: msg.sdpMLineIndex
+            });
+            pc.addIceCandidate(candidate);
+        }
+    }
+
+    function handleError(error) {
+        logger.error('ERROR', error);
+    }
+
+    /************** websocket ***********************/
+    var hostname = window.location.hostname;
+    var protocol = window.location.protocol;
+    if (protocol.toLowerCase().indexOf("https") >= 0){
+        ws = new WebSocket('wss://' + hostname + ':8443');
+    }
+    else {
+        ws = new WebSocket('ws://' + hostname + ':8080');
+    }
+    ws.binaryType = "arraybuffer";
+    ws.onopen = onOpen;
+    ws.onclose = onClose;
+    ws.onmessage = onMessage;
+    ws.onerror = onError;
+
+    function onMessage(evt) {
+        logger.info("onMessage: " + evt.data);
+        onData(evt.data);
+    }
+
+    function onOpen() {
+        logger.info("onOpen");
+    }
+
+    function onClose() {
+        logger.info("onClose");
+    }
+
+    function onError() {
+        logger.info("onError");
+    }
+
+    function sendMessage(msg) {
+        logger.info("send: " + msg);
+        ws.send(msg);
+    }
+    /****************** end of websocket ***********************/
+
+</script>
+
+</body>
+
+</html>
