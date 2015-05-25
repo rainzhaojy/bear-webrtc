@@ -3,7 +3,7 @@ var static = require('node-static'),
     config = require('getconfig'),
     fs = require('fs'),
     nPort = parseInt(config.server.port, 10),
-    LoggerObj = require("./bear.logger.js").Logger,
+    LoggerObj = require("./js/bear.logger.js").Logger,
     logger = new LoggerObj();
 
 function onHttpRequest(req, res){

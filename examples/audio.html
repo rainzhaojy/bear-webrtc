@@ -1,22 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>A very basic webrtc demo</title>
-    <style>
-        div.video {
-            border-style: solid;
-            border-width: 1px;
-        }
-    </style>
+    <title>Audio only</title>
     <script src='../js/bear.webrtcadapter.js'></script>
     <script src="../js/bear.logger.js"></script>
 </head>
 
 <body>
 
-<div class="video">
-    <video id="localVideo" width="320" height="240" autoplay muted></video>
-    <video id="remoteVideo" width="320" height="240" autoplay muted></video>
+<div>
+    <audio id="localAudio" controls autoplay></audio>
+    <audio id="remoteAudio" controls autoplay></audio>
 </div>
 
 <div>
@@ -28,8 +22,8 @@
     var logger = new bear.Logger();
     var localStream, pc;
 
-    var localVideo = document.getElementById("localVideo");
-    var remoteVideo = document.getElementById("remoteVideo");
+    var localAudio = document.getElementById("localAudio");
+    var remoteAudio = document.getElementById("remoteAudio");
 
     var startButton = document.getElementById("startButton");
     var callButton = document.getElementById("callButton");
@@ -39,14 +33,22 @@
     function start() {
         logger.log("start: Requesting local stream");
         startButton.disabled = true;
-        getUserMedia({audio: true, video: true}, gotLocalStream, handleError);
+        getUserMedia({audio: true, video: false}, gotLocalStream, handleError);
         logger.log("start: done");
     }
 
     function gotLocalStream(stream) {
         logger.log("gotLocalStream: Received local stream");
-        localVideo.src = URL.createObjectURL(stream);
+        localAudio.src = URL.createObjectURL(stream);
         localStream = stream;
+
+        if (localStream.getVideoTracks().length > 0) {
+            logger.log('gotLocalStream: Using video device: ' + localStream.getVideoTracks()[0].label);
+        }
+        if (localStream.getAudioTracks().length > 0) {
+            logger.log('gotLocalStream: Using audio device: ' + localStream.getAudioTracks()[0].label);
+        }
+
         callButton.disabled = false;
         createPeerConnection();
         logger.log("gotLocalStream: done");
@@ -59,12 +61,6 @@
 
     function createPeerConnection() {
         logger.log("createPeerConnection: Creating peer connection")
-        if (localStream.getVideoTracks().length > 0) {
-            logger.log('createPeerConnection: Using video device: ' + localStream.getVideoTracks()[0].label);
-        }
-        if (localStream.getAudioTracks().length > 0) {
-            logger.log('createPeerConnection: Using audio device: ' + localStream.getAudioTracks()[0].label);
-        }
 
         var servers = null; //no STUN/TURN servers
         pc = new RTCPeerConnection(servers);
@@ -147,7 +143,7 @@
 
     function gotRemoteStream(event) {
         logger.log("gotRemoteStream: Received remote stream");
-        remoteVideo.src = URL.createObjectURL(event.stream);
+        remoteAudio.src = URL.createObjectURL(event.stream);
     }
 
     function gotLocalIceCandidate(event) {

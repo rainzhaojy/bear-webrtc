@@ -8,18 +8,30 @@
 
 <h2>WebRTC Examples</h2>
 
-<h3>webrtc basic:</h3>
+如果两个页面需要signaling server来交换signaling message，则需要运行"node server.js"启动websocket server，这个wss会广播收到的消息，相当于是一个signaling server，这样两个页面可以实现信令交换.
+
+<h3>WebRTC basic (signaling server required):</h3>
 <ol>
-<li><a href="examples/basic.html">a basic webrtc demo</a> - 一个最简单的webrtc demo</li>
-<li><a href="examples/steps.html">webrtc demo with steps</a> - 需要自己串起每一步, 可以一端打开basic.html, 另一端打开steps.html</li>
-<li><a href="examples/roap.html">signaling with roap.js</a> - 使用roap.js实现signaling</li>
+    <li><a href="examples/basic.html">basic.html</a> - 一个最简单的webrtc demo，可以打开两个basic.html相互通讯</li>
+    <li><a href="examples/audio.html">audio.html</a> - audio only webrtc demo, 可以打开两个audio.html相互通讯</li>
+    <li><a href="examples/steps.html">steps.html</a> - 需要自己串起每一步, 可以一端打开basic.html, 另一端打开steps.html</li>
+    <li><a href="examples/roap.html">roap.html</a> - 使用roap.js实现signaling，可以打开两个roap.html相互通讯</li>
+    <li><a href="examples/audiofromfile.html">audiofromfile.html</a> - audio stream from file, 可以一边打开audio.html，一边打开audiofromfile.html相互通讯</li>
 </ol>
 
-<h3>getUserMedia:</h3>
+<h3>getUserMedia (signaling server not required):</h3>
 <ol>
-<li><a href="examples/getUserMedia/resolution.html">set resolution</a> - 利用getUserMedia()第一个参数constraints限定video resolution</li>
-<li><a href="examples/getUserMedia/mediasource.html">media source</a> - 利用MediaStreamTrack.getSources()得到audio/video输入源，然后利用getUserMedia()的constraints参数限定source</li>
-<li><a href="examples/getUserMedia/screenshot.html">take screenshot</a> - 利用getUserMedia()与canvas实现拍照功能</li>
+    <li><a href="examples/getUserMedia/resolution.html">resolution.html</a> - 利用getUserMedia()第一个参数constraints限定video resolution, 切换resolution之前会clean up现有video</li>
+    <li><a href="examples/getUserMedia/mediasource.html">mediasource.html</a> - 利用MediaStreamTrack.getSources()得到audio/video输入源，然后利用getUserMedia()的constraints参数限定source</li>
+    <li><a href="examples/getUserMedia/screenshot.html">screenshot.html</a> - 利用getUserMedia()与canvas实现拍照功能</li>
+    <li><a href="examples/getUserMedia/volume.html">volume.html</a> - 利用getUserMedia()得到audio stream, 用Web Audio API得到audio volume</li>
+</ol>
+
+<h3>Web Audio API</h3>
+<ol>
+    <li><a href="examples/webaudio/webaudio.html">webaudio.html</a> - 一个简单的Web Audio API demo，使用XHR下载mp3文件并使用WEB AUDIO API播放</li>
+    <li><a href="examples/getUserMedia/volume.html">volume.html</a> - 利用getUserMedia()得到audio stream, 用Web Audio API得到audio volume</li>
+    <li><a href="examples/audiofromfile.html">audiofromfile.html</a> - audio stream from file, 可以一边打开audio.html，一边打开audiofromfile.html相互通讯</li>
 </ol>
 
 <h3>Others:</h3>
@@ -27,5 +39,11 @@
     <li><a href="examples/mediafromfile.html">media from file</a> - 不用getUserMedia()而是从文件中得到media stream</li>
 </ol>
 
+<hr>
+References:
+<ol>
+    <li>https://github.com/webrtc/samples</li>
+    <li>https://github.com/mattdiamond/Recorderjs</li>
+</ol>
 </body>
 </html>

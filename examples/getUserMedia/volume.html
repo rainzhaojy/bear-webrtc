@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio volume</title>
+</head>
+
+<body>
+
+<p>Measure the volume with Web Audio API:</p>
+
+<table>
+    <tr><td>Instant:</td><td><meter id="instant" high="0.25" max="1" value="0"></meter><span id="instantValue"></span></td></tr>
+    <tr><td>Slow:</td><td><meter id="slow" high="0.25" max="1" value="0"></meter><span id="slowValue"></span></td></tr>
+    <tr><td>Clip:</td><td><meter id="clip" max="1" value="0"></meter><span id="clipValue"></span></td></tr>
+</table>
+<div>
+    <button id="startButton" onclick="start()">Start</button>
+    <button id="stopButton" onclick="stop()">Stop</button>
+</div>
+
+<p>The 'instant' volume changes approximately every 50ms; the 'slow' volume approximates the average volume over about a
+    second.</p>
+
+<p>Note that you will not hear your own voice; use the <a href="../audio">local audio rendering demo</a> for that.</p>
+
+<script src='../../js/bear.webrtcadapter.js'></script>
+<script src="../../js/bear.logger.js"></script>
+<script src="../../js/soundmeter.js"></script>
+<script>
+    var logger = new bear.Logger();
+
+    var startButton = document.getElementById("startButton");
+    var stopButton = document.getElementById("stopButton");
+    var instantMeter = document.getElementById("instant");
+    var slowMeter = document.getElementById("slow");
+    var clipMeter = document.getElementById("clip");
+
+    var instantValueDisplay = document.getElementById("instantValue");
+    var slowValueDisplay = document.getElementById("slowValue");
+    var clipValueDisplay = document.getElementById("clipValue");
+
+    var localStream, soundMeter;
+
+    try {
+        var AudioContext = window.AudioContext || window.webkitAudioContext;
+        var audioContext = new AudioContext();
+    } catch (e) {
+        alert('Web Audio API not supported.');
+    }
+
+    function gotStream(stream) {
+        logger.log("gotStream: Got local stream");
+        localStream = stream;
+        soundMeter = new bear.SoundMeter(audioContext, logger);
+        soundMeter.connectToSource(localStream);
+
+        //read SoundMeter and update UI every 200ms
+        setInterval(function () {
+            instantMeter.value = instantValueDisplay.innerText =
+                    soundMeter.instant.toFixed(2);
+            slowMeter.value = slowValueDisplay.innerText =
+                    soundMeter.slow.toFixed(2);
+            clipMeter.value = clipValueDisplay.innerText =
+                    soundMeter.clip;
+        }, 200);
+    }
+
+    function errorCallback(error) {
+        logger.log('ERROR: ', error);
+    }
+
+    function start() {
+        logger.log("start: Requesting local stream");
+        getUserMedia({audio: true, video: false}, gotStream, errorCallback);
+    }
+    function stop() {
+        logger.log("stop: stop audio");
+
+        //localVideoStatsDiv.innerHTML = '';
+        if (localStream) {
+            //localVideo.src = '';
+            soundMeter.stop();
+            localStream.stop();
+            localStream = null;
+        }
+
+    }
+</script>
+
+</body>
+</html>

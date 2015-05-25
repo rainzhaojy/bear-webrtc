@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+</head>
+<body>
+
+<div>
+    <button id="load" onclick="loadSound('VCR.mp3')">Load Sound</button>
+    <button id="play" onclick="playSound()">Play Sound</button>
+</div>
+
+<script src='../../js/bear.webrtcadapter.js'></script>
+<script src="../../js/bear.logger.js"></script>
+<script>
+    var logger = new bear.Logger();
+
+    var AudioContext = AudioContext || webkitAudioContext;
+    var context = new AudioContext();
+    var audioBuffer;
+
+    function loadSound(url) {
+        logger.log("loading audio file:", url);
+        var request = new XMLHttpRequest();
+        request.open('GET', url, true);
+        request.responseType = 'arraybuffer';
+        request.onload = function() {
+            logger.log("loaded audio file");
+            context.decodeAudioData(request.response, function(buffer) {
+                logger.log('decoded the audio file');
+                logger.log(buffer);
+                audioBuffer = buffer;
+            }, handleError);
+        }
+        request.send();
+    }
+
+    function playSound() {
+        logger.log("play sound");
+        var source = context.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(context.destination);
+        logger.log(source);
+        source.loop = true; //loop the mp3
+        source.start();
+    }
+
+    function handleError(error) {
+        logger.error('ERROR', error);
+    }
+
+</script>
+
+</body>
+</html>
